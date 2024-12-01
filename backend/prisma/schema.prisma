@@ -1,0 +1,129 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Tenant (Clínica)
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  domain      String   @unique
+  plan        String   @default("basic") // basic, professional, enterprise
+  status      String   @default("active")
+  settings    Json?    // Configurações específicas da clínica
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relações
+  users         User[]
+  professionals Professional[]
+  appointments  Appointment[]
+}
+
+// Usuário
+model User {
+  id        String   @id @default(uuid())
+  email     String
+  password  String
+  name      String
+  role      Role     @default(CLIENT)
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Multi-tenant
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Relações
+  clientAppointments    Appointment[] @relation("ClientAppointments")
+  professionalProfile   Professional?
+
+  @@unique([email, tenantId])
+}
+
+// Profissional (Veterinário)
+model Professional {
+  id            String   @id @default(uuid())
+  specialty     String
+  bio           String?
+  rating        Float?
+  commission    Float    @default(70) // Porcentagem da comissão
+  availability  Json?    // Horários disponíveis
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Multi-tenant
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Relações
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  appointments  Appointment[]
+}
+
+// Consulta
+model Appointment {
+  id            String    @id @default(uuid())
+  date          DateTime
+  status        AppointmentStatus @default(SCHEDULED)
+  type          String    // video, chat
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Multi-tenant
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+
+  // Relações
+  clientId      String
+  client        User      @relation("ClientAppointments", fields: [clientId], references: [id])
+  professionalId String
+  professional  Professional @relation(fields: [professionalId], references: [id])
+  payment       Payment?
+}
+
+// Pagamento
+model Payment {
+  id            String    @id @default(uuid())
+  amount        Float
+  status        PaymentStatus @default(PENDING)
+  paymentMethod String
+  commission    Float     // Valor da comissão do profissional
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relação
+  appointmentId String    @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+}
+
+enum Role {
+  SUPERADMIN
+  ADMIN
+  PROFESSIONAL
+  CLIENT
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+  FAILED
+}
